@@ -33,8 +33,9 @@ def download_datasets() -> bool:
         src_data: datasets.DatasetDict = datasets.load_dataset(path=HUGGING_FACE_DATASET_URI, token=load_token(), name=config)
         logger.info(f"Loaded {HUGGING_FACE_DATASET_URI}/{config} dataset")
         for dataset_type, dataset in src_data.items():
-            dataset.save_to_disk(f"resources/datasets/{config}/{dataset_type}")
+            dataset.to_csv(f"resources/datasets/{dataset_type}/{config}.csv")
     return True
+
 
 
 if __name__ == '__main__':
