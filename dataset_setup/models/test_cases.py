@@ -22,7 +22,7 @@ class TestCasesModel(BaseModel):
     question: str
     level: int
     task_type: str = None
-    answer: Optional[str]
+    answer: str
     file_name: Optional[str] = None
     file_path: Optional[str] = None
     file_type: Optional[str] = None
