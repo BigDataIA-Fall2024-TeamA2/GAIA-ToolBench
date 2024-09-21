@@ -1,0 +1,12 @@
+{
+    "questions": [
+        {
+            "question": "What are the benefits of meditation?",
+            "context": "Meditation is a practice that has been used for centuries."
+        },
+        {
+            "question": "How can I improve my productivity?",
+            "context": "Many people seek ways to manage their time and tasks more effectively."
+        }
+    ]
+}
