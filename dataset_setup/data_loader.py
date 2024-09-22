@@ -7,8 +7,10 @@ from datetime import datetime
 
 import logging
 
-from pandas.core.computation.pytables import PyTablesExpr
 from sqlalchemy import create_engine, false
+from sqlalchemy.orm import declarative_base
+
+from models import create_tables
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -42,9 +44,15 @@ def load_datasets_from_filesystem() -> dict[str, pd.DataFrame]:
         # Flatten annotator_metadata fields
         json_struct = json.loads(dataset_df.to_json(orient="records"))
         flattened_dataset_df = pd.json_normalize(json_struct)
-        flattened_dataset_df.to_csv("resources/cleaned_datasets/1.csv", index=False)
         flattened_dataset_df.columns = [col.replace("annotator_metadata.", "") for col in flattened_dataset_df.columns]
+
+        # Fill N/A
+        flattened_dataset_df["metadata_num_tools"] = pd.to_numeric(flattened_dataset_df["metadata_num_tools"], errors="coerce").astype("Int64")
+
+        flattened_dataset_df.to_csv("resources/cleaned_datasets/1.csv", index=False)
         cleaned_datasets[file] = flattened_dataset_df
+
+        print(flattened_dataset_df.columns)
 
     return cleaned_datasets
 
@@ -112,11 +120,14 @@ def main():
     postgres_conn_string = get_postgres_conn_string()
     engine = create_engine(postgres_conn_string)
 
+    # Create tables if they don't already exist
+    create_tables(engine)
+
     with engine.connect() as connection:
         for df_name, df in dataframes.items():
             start_time = time.time()
             df.to_sql(
-                name="test_cases", con=connection, if_exists="replace",
+                name="test_cases", con=connection, if_exists="append",
             )
             logger.info(f"Created table `test_cases` from {df_name} in {time.time_ns() - start_time} sec")
     logger.info("Completed loading datasets to database")
