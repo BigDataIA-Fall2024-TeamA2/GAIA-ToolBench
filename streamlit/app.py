@@ -1,35 +1,50 @@
+import os
+from dotenv import load_dotenv
+import psycopg2
 import streamlit as st
-# import json
-# import openai  # Ensure you install openai using `pip install openai`
 import pandas as pd
 import matplotlib.pyplot as plt
+from LLM.OpenAIcalls import create_prompt, get_response
 
-# # Set up OpenAI API key
-# openai.api_key = 'your_openai_api_key'
+# Load environment variables from .env file
+load_dotenv()
 
-# # Load GAIA dataset metadata
-# def load_metadata():
-#     with open('metadata.jsonl', 'r') as f:
-#         return [json.loads(line) for line in f.readlines()]
+# Function to get a PostgreSQL connection
+def get_postgres_conn():
+    conn_string = os.getenv('POSTGRES_CONN_STRING')
+    if not conn_string:
+        raise ValueError("Postgres connection string not set in environment variables.")
+    
+    conn = psycopg2.connect(conn_string)
+    return conn
 
-# # Send question to OpenAI model and get response
-# def query_openai_model(context, question):
-#     response = openai.Completion.create(
-#         engine="text-davinci-003",  # Or any other model you plan to use
-#         prompt=f"Context: {context}\nQuestion: {question}\nAnswer:",
-#         max_tokens=150
-#     )
-#     return response.choices[0].text.strip()
+# Function to load metadata from the PostgreSQL database
+def load_metadata():
+    conn = get_postgres_conn()
+    cur = conn.cursor()
+    
+    cur.execute("SELECT * FROM test_cases;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
 
-# # Compare model output with expected answer
-# def compare_answers(model_answer, expected_answer):
-#     return model_answer == expected_answer
+    metadata = []
+    for row in rows:
+        metadata.append({
+            'id': row[0],
+            'context': row[1],
+            'question': row[2],
+            'expected_answer': row[4],
+            'annotator_steps': row[5]
+        })
+    
+    return metadata
 
 # Function to handle navigation between pages
 def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox("Go to", ["Home", "Test Case Selection", "Annotator Modification", "Feedback", "Reports & Visualization"])
-    
+
     # Home page
     if page == "Home":
         st.title("GAIA OpenAI Model Evaluator")
@@ -56,25 +71,30 @@ def main():
         # Display selected case metadata
         selected_metadata = metadata[int(selected_case.split()[-1])]
         context = selected_metadata['context']
-        question = selected_metadata['question']
-        expected_answer = selected_metadata['expected_answer']
+        question = st.text_area("Question", value=selected_metadata['question'], height=100)
+        expected_answer = st.text_input("Expected Answer", value=selected_metadata['expected_answer'])
         
         st.subheader("Selected Case Information")
         st.write(f"**Context**: {context}")
-        st.write(f"**Question**: {question}")
         
         # Get answer from OpenAI model
         if st.button("Get OpenAI Answer"):
-            model_answer = query_openai_model(context, question)
-            st.write(f"**Model Answer**: {model_answer}")
-            st.write(f"**Expected Answer**: {expected_answer}")
-            
-            # Comparison
-            if compare_answers(model_answer, expected_answer):
-                st.success("The model's answer matches the expected answer!")
-            else:
-                st.error("The model's answer is incorrect.")
-    
+            try:
+                # Send context and question to the OpenAI API
+                prompt = create_prompt(context, question)
+                model_answer = get_response(prompt)
+                
+                # Display the model's answer
+                st.write(f"**Model Answer**: {model_answer}")
+                
+                # Compare with expected answer
+                if model_answer.strip().lower() == expected_answer.strip().lower():
+                    st.success("The model's answer matches the expected answer!")
+                else:
+                    st.error("The model's answer is incorrect.")
+            except Exception as e:
+                st.error(f"Error fetching the OpenAI answer: {e}")
+
     # Annotator Modification page
     elif page == "Annotator Modification":
         st.title("Modify Annotator Steps & Re-evaluate")
