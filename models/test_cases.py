@@ -1,10 +1,13 @@
+from datetime import datetime
+
 from sqlalchemy import Column, Integer, String, DateTime, Text
 from sqlalchemy.orm import declarative_base
-from datetime import datetime
+
+from models.db import db_session
 
 Base = declarative_base()
 
-class TestCasesModel(Base):
+class TestCases(Base):
     __tablename__ = "test_cases"
 
     index = Column(Integer())
@@ -21,3 +24,18 @@ class TestCasesModel(Base):
     metadata_num_tools = Column(Integer(), nullable=True)
     created_at = Column(DateTime(), default=datetime.now)
     modified_at = Column(DateTime(), default=datetime.now)
+
+def fetch_all_tests():
+    with db_session() as session:
+        return session.query(
+            TestCases.index,
+            TestCases.task_id,
+            TestCases.question,
+            TestCases.file_name,
+            TestCases.file_path,
+        ).all()
+
+
+def fetch_test_by_id(task_id: str):
+    with db_session() as session:
+        return session.query(TestCases).filter(TestCases.task_id == task_id).first()

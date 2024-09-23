@@ -1,16 +1,13 @@
 import json
-import os
+import logging
 import time
 from glob import glob
+
 import pandas as pd
-from datetime import datetime
-
-import logging
-
-from sqlalchemy import create_engine, false
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import create_engine
 
 from models import create_tables
+from models.db import get_postgres_conn_string
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -21,6 +18,12 @@ logging.basicConfig(
 
 
 def load_datasets_from_filesystem() -> dict[str, pd.DataFrame]:
+    """
+    This function loads the datasets from filesystem and preprocesses them.
+    The function reads CSV files from the specified directory, assumes certain column names for consistency, and flattens 'annotator_metadata' into separate columns.
+    It also converts 'annotator_metadata' values from JSON format to Pandas DataFrame and then normalizes it using json_normalize.
+    Additionally, it checks if there are any CSV files in the specified directory, raising a ValueError if no datasets are found.
+    """
     file_list = glob("resources/datasets/validation/*_all.csv")
     dataset_headers = [
         "task_id",
@@ -37,8 +40,8 @@ def load_datasets_from_filesystem() -> dict[str, pd.DataFrame]:
     cleaned_datasets = {}
     for file in file_list:
         dataset_df = pd.read_csv(file, names=dataset_headers, header=0)
-        dataset_df["created_at"] = datetime.now()
-        dataset_df["modified_at"] = datetime.now()
+        # dataset_df["created_at"] = pd.Timestamp.now()
+        # dataset_df["modified_at"] = pd.Timestamp.now()
         dataset_df["annotator_metadata"] = dataset_df["annotator_metadata"].apply(preprocess_annotator_metadata)
 
         # Flatten annotator_metadata fields
@@ -57,14 +60,8 @@ def load_datasets_from_filesystem() -> dict[str, pd.DataFrame]:
     return cleaned_datasets
 
 
-def get_postgres_conn_string():
-    if "POSTGRES_CONN_STRING" not in os.environ:
-        raise ValueError("Postgres Connection details missing in environment")
-    return os.environ["POSTGRES_CONN_STRING"]
-
-
 def preprocess_annotator_metadata(metadata: str) -> dict:
-    # logger.info("Fixing annotator metadata")
+    logger.info("Fixing annotator metadata")
     metadata_json = fix_json_structure(metadata)
     return {
         "metadata_steps": metadata_json["Steps"],
@@ -114,6 +111,9 @@ def transfer_attachment(source_file_path: str) -> str:
 
 
 def main():
+    """
+    Main function that loads datasets, sets up Postgres connection, creates tables if needed, and stores the cleaned data in the database.
+    """
     dataframes = load_datasets_from_filesystem()
 
     # Setup Postgres connection
@@ -131,7 +131,6 @@ def main():
             )
             logger.info(f"Created table `test_cases` from {df_name} in {time.time_ns() - start_time} sec")
     logger.info("Completed loading datasets to database")
-
 
 if __name__ == "__main__":
     main()
