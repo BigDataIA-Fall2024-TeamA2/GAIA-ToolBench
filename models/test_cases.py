@@ -33,6 +33,8 @@ def fetch_all_tests():
             TestCases.question,
             TestCases.file_name,
             TestCases.file_path,
+            TestCases.answer,
+            TestCases.metadata_steps
         ).all()
 
 
