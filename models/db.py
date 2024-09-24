@@ -23,13 +23,16 @@ class DatabaseSession:
             conn_string = get_postgres_conn_string()
             cls._instance = super().__new__(cls)
             cls._instance.db_engine = create_engine(conn_string)
-            cls._instance.session_maker = scoped_session(sessionmaker(autocommit=False, autoflush=True, bind=cls._instance.db_engine))
+            cls._instance.session_maker = scoped_session(
+                sessionmaker(
+                    autocommit=False, autoflush=True, bind=cls._instance.db_engine
+                )
+            )
         return cls._instance
 
     @classmethod
     def db_session(cls):
         return cls().session_maker()
-
 
 
 @contextmanager
