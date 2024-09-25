@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from sqlalchemy.orm import sessionmaker
 from models.db import DatabaseSession
 from models.test_cases import fetch_all_tests, fetch_test_by_id  # Import functions from test_cases
-from LLM.OpenAIcalls import create_prompt, get_response
+from llm_utils.openai_utils import create_prompt, get_response
 
 # Load environment variables from .env file
 load_dotenv()
@@ -70,7 +70,7 @@ def main():
         if st.button("Get OpenAI Answer"):
             try:
                 # Send context and question to the OpenAI API
-                if file_path !=  None:
+                if file_path is not None:
                     prompt = create_prompt(question)
                 else:
                     prompt = create_prompt(question, file_path)
