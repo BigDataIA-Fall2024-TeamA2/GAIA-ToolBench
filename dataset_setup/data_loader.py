@@ -11,9 +11,9 @@ from models.db import get_postgres_conn_string
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
-    format='%(asctime)s %(levelname)-8s %(message)s',
+    format="%(asctime)s %(levelname)-8s %(message)s",
     level=logging.INFO,
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt="%Y-%m-%d %H:%M:%S",
 )
 
 
@@ -32,7 +32,7 @@ def load_datasets_from_filesystem() -> dict[str, pd.DataFrame]:
         "answer",
         "file_name",
         "file_path",
-        "annotator_metadata"
+        "annotator_metadata",
     ]
     if len(file_list) == 0:
         raise ValueError("There are no datasets available in the resources path")
@@ -42,15 +42,27 @@ def load_datasets_from_filesystem() -> dict[str, pd.DataFrame]:
         dataset_df = pd.read_csv(file, names=dataset_headers, header=0)
         # dataset_df["created_at"] = pd.Timestamp.now()
         # dataset_df["modified_at"] = pd.Timestamp.now()
-        dataset_df["annotator_metadata"] = dataset_df["annotator_metadata"].apply(preprocess_annotator_metadata)
+        dataset_df["annotator_metadata"] = dataset_df["annotator_metadata"].apply(
+            preprocess_annotator_metadata
+        )
 
         # Flatten annotator_metadata fields
         json_struct = json.loads(dataset_df.to_json(orient="records"))
         flattened_dataset_df = pd.json_normalize(json_struct)
-        flattened_dataset_df.columns = [col.replace("annotator_metadata.", "") for col in flattened_dataset_df.columns]
+        flattened_dataset_df.columns = [
+            col.replace("annotator_metadata.", "")
+            for col in flattened_dataset_df.columns
+        ]
 
         # Fill N/A
-        flattened_dataset_df["metadata_num_tools"] = pd.to_numeric(flattened_dataset_df["metadata_num_tools"], errors="coerce").astype("Int64")
+        flattened_dataset_df["metadata_num_tools"] = pd.to_numeric(
+            flattened_dataset_df["metadata_num_tools"], errors="coerce"
+        ).astype("Int64")
+
+        # Update file paths from S3
+        flattened_dataset_df["file_path"] = (
+            "damg7374-a1-store/" + flattened_dataset_df["file_name"]
+        )
 
         flattened_dataset_df.to_csv("resources/cleaned_datasets/1.csv", index=False)
         cleaned_datasets[file] = flattened_dataset_df
@@ -81,15 +93,11 @@ def fix_json_structure(metadata: str) -> dict:
     """
     try:
         return json.loads(
-            metadata
-            .replace('"', "TMP1")
-            .replace("'", '"')
-            .replace("TMP1", "'")
+            metadata.replace('"', "TMP1").replace("'", '"').replace("TMP1", "'")
         )
     except json.JSONDecodeError:
         return json.loads(
-            metadata
-            .replace("'s", "TMP1")
+            metadata.replace("'s", "TMP1")
             .replace("'t", "TMP2")
             .replace("'(", "TMP3")
             .replace('"', "'")
@@ -127,10 +135,15 @@ def main():
         for df_name, df in dataframes.items():
             start_time = time.time()
             df.to_sql(
-                name="test_cases", con=connection, if_exists="append",
+                name="test_cases",
+                con=connection,
+                if_exists="append",
             )
-            logger.info(f"Created table `test_cases` from {df_name} in {time.time_ns() - start_time} sec")
+            logger.info(
+                f"Created table `test_cases` from {df_name} in {time.time_ns() - start_time} sec"
+            )
     logger.info("Completed loading datasets to database")
+
 
 if __name__ == "__main__":
     main()

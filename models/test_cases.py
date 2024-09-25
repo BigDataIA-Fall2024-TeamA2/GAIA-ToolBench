@@ -7,6 +7,7 @@ from models.db import db_session
 
 Base = declarative_base()
 
+
 class TestCases(Base):
     __tablename__ = "test_cases"
 
@@ -24,6 +25,7 @@ class TestCases(Base):
     metadata_num_tools = Column(Integer(), nullable=True)
     created_at = Column(DateTime(), default=datetime.now)
     modified_at = Column(DateTime(), default=datetime.now)
+
 
 def fetch_all_tests():
     with db_session() as session:
