@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from models.db import DatabaseSession
 from models.test_cases import fetch_all_tests, fetch_test_by_id  # Import functions from test_cases
 from LLM.OpenAIcalls import create_prompt, get_response
+from models.benchmark_results import fetch_benchmark_results  # Import the function to fetch benchmark results
 
 # Load environment variables from .env file
 load_dotenv()
@@ -53,7 +54,7 @@ def main():
         # Display selected case metadata
         selected_metadata = metadata[int(selected_case.split()[-1]) - 1]
         
-        context = selected_metadata.task_id  # Assuming 'question' is what you want to display
+        context = selected_metadata.task_id  # Assuming 'task_id' is what you want to display
         st.subheader("Selected Case Information")
         st.write(f"**Context**: {context}")
         question = st.text_area("Question", value=selected_metadata.question, height=100)
@@ -64,13 +65,11 @@ def main():
         # Show the current annotator steps in the session state
         st.session_state.annotator_steps = annotator_steps
         
-        
-
         # Get answer from OpenAI model
         if st.button("Get OpenAI Answer"):
             try:
                 # Send context and question to the OpenAI API
-                if file_path !=  None:
+                if file_path != None:
                     prompt = create_prompt(question)
                 else:
                     prompt = create_prompt(question, file_path)
@@ -125,21 +124,47 @@ def main():
     # Reports & Visualization page
     elif st.session_state.page == "Reports & Visualization":
         st.title("Evaluation Reports & Visualization")
-        
-        # Placeholder for feedback and performance visualization
-        feedback_data = pd.DataFrame({
-            'Test Case': ['Case 1', 'Case 2', 'Case 3'],
-            'Correct': [2, 1, 3],
-            'Incorrect': [1, 2, 1]
-        })
-        st.write(feedback_data)
 
-        # Generate a bar plot for correct/incorrect answers
-        fig, ax = plt.subplots()
-        feedback_data.set_index('Test Case').plot(kind='bar', ax=ax)
-        st.pyplot(fig)
+        # Fetch benchmark results from the database
+        benchmark_results = fetch_benchmark_results()
+
+        if not benchmark_results:
+            st.write("No benchmark results found.")
+        else:
+            # Convert results to a DataFrame
+            data = [{
+                'Test Case': result.task_id,
+                'Model': result.model_name,
+                'LLM Answer': result.llm_answer,
+                'Status': result.status,
+                'Timestamp': result.created_at
+            } for result in benchmark_results]
+
+            df = pd.DataFrame(data)
+
+            # Display the DataFrame
+            st.dataframe(df)
+
+            # Generate a simple bar plot for Status (e.g., Correct vs Incorrect)
+            status_counts = df['Status'].value_counts()
+
+            fig, ax = plt.subplots()
+            status_counts.plot(kind='bar', ax=ax)
+            ax.set_title('Benchmark Status Distribution')
+            ax.set_xlabel('Status')
+            ax.set_ylabel('Count')
+            st.pyplot(fig)
+
+            # Pie chart of Status
+            st.subheader("Pie Chart: Status Distribution")
+            fig2, ax2 = plt.subplots()
+            ax2.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', startangle=90)
+            ax2.axis('equal')  # Equal aspect ratio ensures the pie is drawn as a circle
+            st.pyplot(fig2)
+
+           
+         
 
 # Run the Streamlit app
 if __name__ == "__main__":
     main()
-
