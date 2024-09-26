@@ -42,3 +42,8 @@ def create_benchmark_result(
         session.add(new_benchmark_result)
         session.commit()
         return new_benchmark_result
+    
+def fetch_benchmark_results():
+    with db_session() as session:
+        results = session.query(BenchmarkResults).all()
+        return results

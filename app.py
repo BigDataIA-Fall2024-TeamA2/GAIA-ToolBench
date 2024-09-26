@@ -1,143 +1,169 @@
+import os
+from dotenv import load_dotenv
 import streamlit as st
-
-# import json
-# import openai  # Ensure you install openai using `pip install openai`
 import pandas as pd
 import matplotlib.pyplot as plt
+from sqlalchemy.orm import sessionmaker
+from models.db import DatabaseSession
+from models.test_cases import fetch_all_tests, fetch_test_by_id  # Import functions from test_cases
+from LLM.OpenAIcalls import create_prompt, get_response
+from models.benchmark_results import fetch_benchmark_results  # Import the function to fetch benchmark results
 
-# # Set up OpenAI API key
-# openai.api_key = 'your_openai_api_key'
-
-# # Load GAIA dataset metadata
-# def load_metadata():
-#     with open('metadata.jsonl', 'r') as f:
-#         return [json.loads(line) for line in f.readlines()]
-
-# # Send question to OpenAI model and get response
-# def query_openai_model(context, question):
-#     response = openai.Completion.create(
-#         engine="text-davinci-003",  # Or any other model you plan to use
-#         prompt=f"Context: {context}\nQuestion: {question}\nAnswer:",
-#         max_tokens=150
-#     )
-#     return response.choices[0].text.strip()
-
-# # Compare model output with expected answer
-# def compare_answers(model_answer, expected_answer):
-#     return model_answer == expected_answer
-
+# Load environment variables from .env file
+load_dotenv()
 
 # Function to handle navigation between pages
 def main():
+    # Initialize session state for page navigation and annotator steps
+    if 'page' not in st.session_state:
+        st.session_state.page = "Home"
+    if 'deny_answer' not in st.session_state:
+        st.session_state.deny_answer = False
+    if 'annotator_steps' not in st.session_state:
+        st.session_state.annotator_steps = ""
+
     st.sidebar.title("Navigation")
-    page = st.sidebar.selectbox(
-        "Go to",
-        [
-            "Home",
-            "Test Case Selection",
-            "Annotator Modification",
-            "Feedback",
-            "Reports & Visualization",
-        ],
-    )
+    page = st.sidebar.selectbox("Go to", ["Home", "Test Case & Annotator Modification", "Feedback", "Reports & Visualization"])
+    
+    # Set the page in session state
+    st.session_state.page = page
 
     # Home page
-    if page == "Home":
+    if st.session_state.page == "Home":
         st.title("GAIA OpenAI Model Evaluator")
-        st.write(
-            """
+        st.write("""
             Welcome to the GAIA OpenAI Model Evaluator. This tool allows you to:
             - Select a validation test case from the GAIA dataset
             - Evaluate the OpenAI model's performance
             - Compare the model's answers with expected answers
             - Modify annotator steps and re-evaluate the model
             - Provide feedback and generate reports with visualizations.
-        """
-        )
+        """)
 
-    # Test Case Selection page
-    elif page == "Test Case Selection":
-        st.title("Test Case Selection & Model Evaluation")
-
-        # Load the GAIA metadata
-        metadata = load_metadata()
-
+    # Test Case & Annotator Modification page
+    elif st.session_state.page == "Test Case & Annotator Modification":
+        st.title("Test Case Selection & Annotator Modification")
+        
+        # Load all test cases
+        metadata = fetch_all_tests()  # Fetch metadata from the database
+        
         # Let user select a test case
-        test_cases = [f"Test Case {i}" for i in range(len(metadata))]
+        test_cases = [f"Test Case {i + 1}" for i in range(len(metadata))]
         selected_case = st.selectbox("Select a Test Case", test_cases)
-
+        
         # Display selected case metadata
-        selected_metadata = metadata[int(selected_case.split()[-1])]
-        context = selected_metadata["context"]
-        question = selected_metadata["question"]
-        expected_answer = selected_metadata["expected_answer"]
-
+        selected_metadata = metadata[int(selected_case.split()[-1]) - 1]
+        
+        context = selected_metadata.task_id  # Assuming 'task_id' is what you want to display
         st.subheader("Selected Case Information")
         st.write(f"**Context**: {context}")
-        st.write(f"**Question**: {question}")
-
+        question = st.text_area("Question", value=selected_metadata.question, height=100)
+        expected_answer = selected_metadata.answer  # Assuming 'answer' is the expected answer
+        file_path = selected_metadata.file_path
+        annotator_steps = selected_metadata.metadata_steps
+        
+        # Show the current annotator steps in the session state
+        st.session_state.annotator_steps = annotator_steps
+        
         # Get answer from OpenAI model
         if st.button("Get OpenAI Answer"):
-            model_answer = query_openai_model(context, question)
-            st.write(f"**Model Answer**: {model_answer}")
-            st.write(f"**Expected Answer**: {expected_answer}")
+            try:
+                # Send context and question to the OpenAI API
+                if file_path != None:
+                    prompt = create_prompt(question)
+                else:
+                    prompt = create_prompt(question, file_path)
+                model_answer = get_response(prompt)
+                # Display the model's answer
+                st.write(f"**Model Answer**: {model_answer}")
 
-            # Comparison
-            if compare_answers(model_answer, expected_answer):
-                st.success("The model's answer matches the expected answer!")
-            else:
-                st.error("The model's answer is incorrect.")
+                # Compare with expected answer
+                if model_answer.strip().lower() == expected_answer.strip().lower():
+                    st.success("The model's answer matches the expected answer!")
+                else:
+                    st.error("The model's answer is incorrect.")
 
-    # Annotator Modification page
-    elif page == "Annotator Modification":
-        st.title("Modify Annotator Steps & Re-evaluate")
+            except Exception as e:
+                st.error(f"Error fetching the OpenAI answer: {e}")
 
-        # Load the GAIA metadata
-        metadata = load_metadata()
+        # Display expected answer after getting the model's answer
+        st.write(f"**Expected Answer**: {expected_answer}")
 
-        # Let user select a test case for modification
-        test_cases = [f"Test Case {i}" for i in range(len(metadata))]
-        selected_case = st.selectbox("Select a Test Case", test_cases)
+        # Side-by-side buttons for accepting or denying the answer
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Accept Answer"):
+                # Here you could implement logic to save the acceptance
+                st.success("Answer accepted!")
 
-        selected_metadata = metadata[int(selected_case.split()[-1])]
-        annotator_steps = selected_metadata["annotator_steps"]
-
-        st.subheader("Modify Annotator Steps")
-        modified_steps = st.text_area("Annotator Steps", value=annotator_steps)
-
-        # Option to re-evaluate the model
-        if st.button("Re-evaluate with Modified Steps"):
-            st.write("Re-evaluating with modified steps...")
-            # Placeholder for actual re-evaluation logic
+        with col2:
+            if st.button("Deny Answer"):
+                # Set session state to indicate that the answer was denied
+                st.session_state.deny_answer = True
+                
+        # Annotator Steps Modification (conditional display)
+        if st.session_state.get('deny_answer', False):
+            st.subheader("Modify Annotator Steps")
+            modified_steps = st.text_area("Annotator Steps", value=st.session_state.annotator_steps)
+            
+            # Option to re-evaluate the model
+            if st.button("Re-evaluate with Modified Steps"):
+                st.write("Re-evaluating with modified steps...")
+                # Placeholder for actual re-evaluation logic
+                st.session_state.deny_answer = False  # Reset the state after re-evaluation
 
     # Feedback page
-    elif page == "Feedback":
+    elif st.session_state.page == "Feedback":
         st.title("User Feedback")
-
+        
         feedback = st.text_area("Enter your feedback")
         if st.button("Submit Feedback"):
             # Store the feedback (you can use a database or file storage)
             st.success("Feedback submitted successfully!")
-
+    
     # Reports & Visualization page
-    elif page == "Reports & Visualization":
+    elif st.session_state.page == "Reports & Visualization":
         st.title("Evaluation Reports & Visualization")
 
-        # Placeholder for feedback and performance visualization
-        feedback_data = pd.DataFrame(
-            {
-                "Test Case": ["Case 1", "Case 2", "Case 3"],
-                "Correct": [2, 1, 3],
-                "Incorrect": [1, 2, 1],
-            }
-        )
-        st.write(feedback_data)
+        # Fetch benchmark results from the database
+        benchmark_results = fetch_benchmark_results()
 
-        # Generate a bar plot for correct/incorrect answers
-        fig, ax = plt.subplots()
-        feedback_data.set_index("Test Case").plot(kind="bar", ax=ax)
-        st.pyplot(fig)
+        if not benchmark_results:
+            st.write("No benchmark results found.")
+        else:
+            # Convert results to a DataFrame
+            data = [{
+                'Test Case': result.task_id,
+                'Model': result.model_name,
+                'LLM Answer': result.llm_answer,
+                'Status': result.status,
+                'Timestamp': result.created_at
+            } for result in benchmark_results]
 
+            df = pd.DataFrame(data)
+
+            # Display the DataFrame
+            st.dataframe(df)
+
+            # Generate a simple bar plot for Status (e.g., Correct vs Incorrect)
+            status_counts = df['Status'].value_counts()
+
+            fig, ax = plt.subplots()
+            status_counts.plot(kind='bar', ax=ax)
+            ax.set_title('Benchmark Status Distribution')
+            ax.set_xlabel('Status')
+            ax.set_ylabel('Count')
+            st.pyplot(fig)
+
+            # Pie chart of Status
+            st.subheader("Pie Chart: Status Distribution")
+            fig2, ax2 = plt.subplots()
+            ax2.pie(status_counts, labels=status_counts.index, autopct='%1.1f%%', startangle=90)
+            ax2.axis('equal')  # Equal aspect ratio ensures the pie is drawn as a circle
+            st.pyplot(fig2)
+
+           
+         
 
 # Run the Streamlit app
 if __name__ == "__main__":
