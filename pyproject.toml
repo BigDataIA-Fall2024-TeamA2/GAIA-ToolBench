@@ -28,6 +28,8 @@ black = "^24.8.0"
 
 streamlit = "^1.38.0"
 matplotlib = "^3.9.2"
+openai = "^1.48.0"
+python-dotenv = "^1.0.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
