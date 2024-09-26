@@ -8,9 +8,10 @@ import openai
 from openai import OpenAI, OpenAIError
 from openai.types.beta import Thread
 
-from utils.s3 import load_file
+from utils.file_system_utils import load_file, OPENAI_SUPPORTED_FILE_FORMATS
 
 logger = logging.getLogger(__name__)
+
 
 @lru_cache(maxsize=1)
 def get_openai_client():
@@ -21,7 +22,7 @@ def get_openai_client():
 
 def get_assistant_id() -> Optional[str]:
     if "OPENAI_ASSISTANT_ID" in os.environ and os.environ["OPENAI_ASSISTANT_ID"]:
-        return os.environ["ASSISTANT_ID"]
+        return os.environ["OPENAI_ASSISTANT_ID"]
     raise ValueError("OpenAI Assistant ID not found in environment variables")
 
 
@@ -39,20 +40,32 @@ def wait_on_run(openai_client: OpenAI, run, thread):
     :param thread:
     :return:
     """
-    while run.status == "queued" or run.status == 'in_progress':
+    while run.status == "queued" or run.status == "in_progress":
         run = openai_client.beta.threads.runs.retrieve(
             thread_id=thread.id,
             run_id=run.id,
         )
         time.sleep(0.5)
 
-    if run.status in ["requires_action", "cancelling", "cancelled", "failed", "incomplete", "expired"]:
-        raise ValueError("OpenAI Assistant computing chat completion failed with status: " + str(run.status))
+    if run.status in [
+        "requires_action",
+        "cancelling",
+        "cancelled",
+        "failed",
+        "incomplete",
+        "expired",
+    ]:
+        raise ValueError(
+            "OpenAI Assistant computing chat completion failed with status: "
+            + str(run.status)
+        )
 
     return run
 
 
-def upload_file_to_vectorstore(openai_client: OpenAI, vector_store_id: str, file_path: str) -> str:
+def upload_file_to_vectorstore(
+    openai_client: OpenAI, vector_store_id: str, file_path: str
+) -> str:
     """
     Upload the file to the vector store and return the id of the uploaded file.
     :param openai_client:
@@ -61,19 +74,16 @@ def upload_file_to_vectorstore(openai_client: OpenAI, vector_store_id: str, file
     :return:
     """
     try:
-        response = openai_client.beta.vector_stores.files.retrieve(file_id=file_path, vector_store_id=vector_store_id)
+        response = openai_client.beta.vector_stores.files.retrieve(
+            file_id=file_path, vector_store_id=vector_store_id
+        )
     except openai.NotFoundError as nfe:
         file_obj = load_file(file_path)
-        message_file = openai_client.files.create(
-            file=file_obj,
-            purpose="assistants"
-        )
+        message_file = openai_client.files.create(file=file_obj, purpose="assistants")
 
         resp = openai_client.beta.vector_stores.files.upload(
-            vector_store_id=vector_store_id,
-            file=file_obj
+            vector_store_id=vector_store_id, file=file_obj
         )
-
 
 
 def get_openai_response_with_attachments(question: str, model: str, file_path=None):
@@ -101,34 +111,35 @@ def get_openai_response_with_attachments(question: str, model: str, file_path=No
                 "file_search": {
                     "vector_store_ids": [vector_store_id],
                 }
-            }
+            },
         )
         logger.info(f"Assistant {assistant_id} updated with vector store id")
 
-    message_file = openai_client.files.create(
-        file=load_file(file_path),
-        purpose="assistants"
-    )
+    # Download the file from S3, verify the file extension is usable with OpenAI, and upload to OpenAI
+    file_buffer, relevant_file_name = load_file(file_path)
+    if os.path.splitext(relevant_file_name)[1] not in OPENAI_SUPPORTED_FILE_FORMATS:
+        logger.error(
+            f"File format {os.path.splitext(relevant_file_name)} is not supported by OpenAI"
+        )
+        return f"File format {os.path.splitext(relevant_file_name)[1]} is not supported by OpenAI. API call to OpenAI not made."
+
+    message_file = openai_client.files.create(file=file_buffer, purpose="assistants")
 
     thread: Thread = openai_client.beta.threads.create()
     message = openai_client.beta.threads.messages.create(
         thread_id=thread.id,
         role="user",
         content=question,
-        attachments=[{
-            "file_id": message_file.id,
-            "tools": [{"type": "file_search"}]
-        }]
+        attachments=[{"file_id": message_file.id, "tools": [{"type": "file_search"}]}],
     )
     run = openai_client.beta.threads.runs.create_and_poll(
-        thread_id=thread.id,
-        assistant_id=assistant_id,
-        model=model
+        thread_id=thread.id, assistant_id=assistant_id, model=model
     )
 
-    messages = list(openai_client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
+    messages = list(
+        openai_client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id)
+    )
     return messages[0].content[0].text
-
 
 
 def get_openai_response(question: str, model: str) -> str:
@@ -148,32 +159,38 @@ def get_openai_response(question: str, model: str) -> str:
         completion = openai_client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content":
-"""You are an intelligent assistant tasked with providing accurate and thoughtful responses based solely on the information in the user's prompt and your existing knowledge base. Your primary goal is to demonstrate strong reasoning abilities by interpreting the user's query, making logical connections, and applying your understanding of the world to generate comprehensive answers. 
-
-Key objectives:
-1. Analyze the prompt thoroughly and identify the core questions or issues being raised.
-2. Use your internal knowledge to reason through the problem, connecting relevant facts, concepts, and logical inferences.
-3. Provide well-explained answers that reflect a deep understanding of the subject, ensuring clarity and precision.
-4. Address ambiguities in the prompt by offering logical interpretations or asking for clarifications when needed."""},
+                {
+                    "role": "system",
+                    "content": """You are an assistant designed to provide clear and accurate answers based on the information in the user's prompt. Use your knowledge to reason through the query and offer concise, relevant, and well-explained responses.""",
+                },
                 {"role": "user", "content": question},
-            ]
+            ],
         )
     except OpenAIError as e:
         err_msg = e.body["message"]
-        logger.error(f"Error while invoking OpenAI API with model: {model} | Error: {err_msg}")
+        logger.error(
+            f"Error while invoking OpenAI API with model: {model} | Error: {err_msg}"
+        )
         return f"Error invoking OpenAI API: {err_msg}"
     return completion.choices[0].message.content
 
 
-
-def invoke_openai_api(question: str, file_path: Optional[str] = None, model: str ="gpt-4o-mini-2024-07-18") -> str:
+def invoke_openai_api(
+    question: str,
+    file_path: Optional[str] = None,
+    model: str = "gpt-4o-mini-2024-07-18",
+) -> str:
     if file_path is not None:
-        return get_openai_response_with_attachments(question=question, file_path=file_path, model=model)
+        return get_openai_response_with_attachments(
+            question=question, file_path=file_path, model=model
+        )
     else:
         return get_openai_response(question=question, model=model)
 
 
 # Example usage:
 if __name__ == "__main__":
-    ...
+    question3 = """The attached spreadsheet shows the inventory for a movie and video game rental store in Seattle, Washington. What is the title of the oldest Blu-Ray recorded in this spreadsheet? Return it as appearing in the spreadsheet."""
+    fp3 = "32102e3e-d12a-4209-9163-7b3a104efe5d.xlsx"
+
+    invoke_openai_api(question3, fp3)

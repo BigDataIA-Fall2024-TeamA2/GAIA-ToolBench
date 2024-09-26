@@ -4,7 +4,7 @@ import os
 
 from botocore.exceptions import ClientError
 
-from utils.s3 import load_s3_bucket, get_s3_client
+from utils.file_system_utils import load_s3_bucket, get_s3_client
 
 logger = logging.getLogger(__name__)
 ATTACHMENTS_DIRECTORY = "resources/file_attachments"
