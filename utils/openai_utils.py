@@ -123,15 +123,28 @@ def get_openai_response_with_attachments(question: str, model: str, file_path=No
         )
         return f"File format {os.path.splitext(relevant_file_name)[1]} is not supported by OpenAI. API call to OpenAI not made."
 
-    message_file = openai_client.files.create(file=file_buffer, purpose="assistants")
-
-    thread: Thread = openai_client.beta.threads.create()
-    message = openai_client.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=question,
-        attachments=[{"file_id": message_file.id, "tools": [{"type": "file_search"}]}],
+    message_file = openai_client.files.create(
+        file=open(relevant_file_name, "rb"),
+        purpose="assistants",
     )
+
+    thread: Thread = openai_client.beta.threads.create(
+        messages=[
+            {
+                "role": "user",
+                "content": question,
+                "attachments": [
+                    {"file_id": message_file.id, "tools": [{"type": "file_search"}]}
+                ],
+            }
+        ]
+    )
+    # message = openai_client.beta.threads.messages.create(
+    #     thread_id=thread.id,
+    #     role="user",
+    #     content=question,
+    #     attachments=[{"file_id": message_file.id, "tools": [{"type": "file_search"}]}],
+    # )
     run = openai_client.beta.threads.runs.create_and_poll(
         thread_id=thread.id, assistant_id=assistant_id, model=model
     )
@@ -139,7 +152,21 @@ def get_openai_response_with_attachments(question: str, model: str, file_path=No
     messages = list(
         openai_client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id)
     )
-    return messages[0].content[0].text
+
+    message_content = messages[0].content[0].text
+    annotations = message_content.annotations
+    citations = []
+
+    for idx, annotation in enumerate(annotations):
+        message_content.value = message_content.value.replace(
+            annotation.text, f"[{idx}]"
+        )
+        if file_citation := getattr(annotation, "file_citation", None):
+            cited_file = openai_client.files.retrieve(file_citation.file_id)
+            citations.append(f"[{idx}] {cited_file.filename}")
+
+    final_message = message_content.value + "\n\n " + "\n".join(citations)
+    return final_message
 
 
 def get_openai_response(question: str, model: str) -> str:
@@ -190,7 +217,8 @@ def invoke_openai_api(
 
 # Example usage:
 if __name__ == "__main__":
-    question3 = """The attached spreadsheet shows the inventory for a movie and video game rental store in Seattle, Washington. What is the title of the oldest Blu-Ray recorded in this spreadsheet? Return it as appearing in the spreadsheet."""
-    fp3 = "32102e3e-d12a-4209-9163-7b3a104efe5d.xlsx"
+    question3 = """An office held a Secret Santa gift exchange where each of its twelve employees was assigned one other employee in the group to present with a gift. Each employee filled out a profile including three likes or hobbies. On the day of the gift exchange, only eleven gifts were given, each one specific to one of the recipient's interests. Based on the information in the document, who did not give a gift?
+    """
+    fp3 = "cffe0e32-c9a6-4c52-9877-78ceb4aaa9fb.docx"
 
     invoke_openai_api(question3, fp3)

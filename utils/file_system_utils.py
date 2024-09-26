@@ -8,35 +8,29 @@ LOCAL_CACHE_DIRECTORY = os.path.join("resources", "benchmark_attachments")
 OPENAI_SUPPORTED_FILE_FORMATS = [
     ".c",
     ".cpp",
+    ".cs",
     ".css",
-    ".csv",
+    ".doc",
     ".docx",
-    ".gif",
     ".go",
     ".html",
     ".java",
-    ".jpeg",
-    ".jpg",
-    ".js",
+    ".java" ".js",
     ".json",
     ".md",
     ".pdf",
     ".php",
-    ".pkl",
-    ".png",
     ".pptx",
     ".py",
     ".rb",
-    ".tar",
+    ".sh",
     ".tex",
     ".ts",
     ".txt",
-    ".webp",
-    ".xlsx",
-    ".xml",
-    ".zip",
 ]
-FILE_FORMATS_WITH_PICTURES = [".xlsx", ".pdf"]
+FILE_FORMATS_WITH_PICTURES = [
+    ".xlsx",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +75,9 @@ def load_file(key: str) -> (bytes, str):
                 logger.info(
                     f"Using the .png file instead of the actual source file: {key}"
                 )
-                return read_file_contents(updated_local_path), updated_local_path
+
+        if os.path.exists(updated_local_path):
+            return read_file_contents(updated_local_path), updated_local_path
 
     if not os.path.exists(local_path):
         download(key)
