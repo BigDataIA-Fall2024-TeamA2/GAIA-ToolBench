@@ -7,6 +7,7 @@ from models.db import db_session
 
 Base = declarative_base()
 
+
 class BenchmarkResults(Base):
     __tablename__ = "benchmark_results"
 
@@ -21,7 +22,14 @@ class BenchmarkResults(Base):
     created_at = Column(DateTime(), default=datetime.now)
 
 
-def create_benchmark_result(llm_answer: str, is_cot: bool, model_name: str, prompted_question: str, task_id: str, status: str):
+def create_benchmark_result(
+    llm_answer: str,
+    is_cot: bool,
+    model_name: str,
+    prompted_question: str,
+    task_id: str,
+    status: str,
+):
     with db_session() as session:
         new_benchmark_result = BenchmarkResults(
             llm_answer=llm_answer,
@@ -29,12 +37,13 @@ def create_benchmark_result(llm_answer: str, is_cot: bool, model_name: str, prom
             model_name=model_name,
             prompted_question=prompted_question,
             task_id=task_id,
-            status=status
+            status=status,
         )
         session.add(new_benchmark_result)
         session.commit()
         return new_benchmark_result
-    
+
+
 def fetch_benchmark_results():
     with db_session() as session:
         results = session.query(BenchmarkResults).all()

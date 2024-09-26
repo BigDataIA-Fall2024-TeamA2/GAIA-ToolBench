@@ -7,6 +7,7 @@ from models.db import db_session
 
 Base = declarative_base()
 
+
 class TestCases(Base):
     __tablename__ = "test_cases"
 
@@ -25,6 +26,7 @@ class TestCases(Base):
     created_at = Column(DateTime(), default=datetime.now)
     modified_at = Column(DateTime(), default=datetime.now)
 
+
 def fetch_all_tests():
     with db_session() as session:
         return session.query(
@@ -34,7 +36,7 @@ def fetch_all_tests():
             TestCases.file_name,
             TestCases.file_path,
             TestCases.answer,
-            TestCases.metadata_steps
+            TestCases.metadata_steps,
         ).all()
 
 
