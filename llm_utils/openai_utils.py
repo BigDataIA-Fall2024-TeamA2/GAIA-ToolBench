@@ -1,14 +1,14 @@
 import logging
-from functools import lru_cache
-from idlelib.format import get_indent
-from opcode import opname
-from typing import Optional
-
-from openai import OpenAI, AssistantEventHandler, api_key, OpenAIError
 import os
 import time
+from functools import lru_cache
+from typing import Optional
 
+import openai
+from openai import OpenAI, OpenAIError
 from openai.types.beta import Thread
+
+from utils.s3 import load_file
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +61,27 @@ def upload_file_to_vectorstore(openai_client: OpenAI, vector_store_id: str, file
     :return:
     """
     try:
-        response = openai_client.beta.vector_stores.files.retrieve(file_path)
+        response = openai_client.beta.vector_stores.files.retrieve(file_id=file_path, vector_store_id=vector_store_id)
+    except openai.NotFoundError as nfe:
+        file_obj = load_file(file_path)
+        message_file = openai_client.files.create(
+            file=file_obj,
+            purpose="assistants"
+        )
+
+        resp = openai_client.beta.vector_stores.files.upload(
+            vector_store_id=vector_store_id,
+            file=file_obj
+        )
 
 
 
-def get_openai_response_with_attachments(question, model="gpt-4o-mini-2024-07-18", file_path=None):
+def get_openai_response_with_attachments(question: str, model: str, file_path=None):
     """
     Create a prompt with attachment.
 
     :param question: The user's question
+    :param model: The OpenAI model to use
     :param file_path: Optional path to a file to attach
     :return: Tuple of (assistant_id, thread_id)
     """
@@ -91,57 +103,32 @@ def get_openai_response_with_attachments(question, model="gpt-4o-mini-2024-07-18
                 }
             }
         )
+        logger.info(f"Assistant {assistant_id} updated with vector store id")
+
+    message_file = openai_client.files.create(
+        file=load_file(file_path),
+        purpose="assistants"
+    )
 
     thread: Thread = openai_client.beta.threads.create()
     message = openai_client.beta.threads.messages.create(
         thread_id=thread.id,
         role="user",
         content=question,
-    )
-    run = openai_client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=assistant_id
-    )
-
-    completed_run = wait_on_run(openai_client, run, thread)
-    messages = openai_client.beta.threads.messages.list(thread_id=thread.id)
-
-    for message in messages.data:
-        if message.role == "assistant":
-            return message.content[0].text.value
-
-
-
-
-
-    # Create a Vector Store
-    vector_store = client.beta.vector_stores.create(name="Financial Statements")
-
-    # Upload file to the Vector Store
-    with open(file_path, "rb") as file:
-        file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-            vector_store_id=vector_store.id, files=[file]
-        )
-
-    # Update Assistant with Vector Store
-    assistant = client.beta.assistants.update(
-        assistant_id=assistant.id,
-        tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}},
-    )
-
-    # Create a Thread with File Attachment
-    message_file = client.files.create(file=open(file_path, "rb"), purpose="assistants")
-    thread = client.beta.threads.create(
-        messages=[{
-            "role": "user",
-            "content": question,
-            "attachments": [
-                {"file_id": message_file.id, "tools": [{"type": "file_search"}]}
-            ],
+        attachments=[{
+            "file_id": message_file.id,
+            "tools": [{"type": "file_search"}]
         }]
     )
+    run = openai_client.beta.threads.runs.create_and_poll(
+        thread_id=thread.id,
+        assistant_id=assistant_id,
+        model=model
+    )
 
-    return assistant.id, thread.id
+    messages = list(openai_client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
+    return messages[0].content[0].text
+
 
 
 def get_openai_response(question: str, model: str) -> str:
@@ -156,13 +143,19 @@ def get_openai_response(question: str, model: str) -> str:
     Returns:
         str: The response from the AI assistant as a string.
     """
-    client = get_openai_client()
+    openai_client = get_openai_client()
     try:
-        completion = client.chat.completions.create(
+        completion = openai_client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "You are an AI assistant being benchmarked for performance. Return just answer without any "
-                                              "explanation as accurately as possible"},
+                {"role": "system", "content":
+"""You are an intelligent assistant tasked with providing accurate and thoughtful responses based solely on the information in the user's prompt and your existing knowledge base. Your primary goal is to demonstrate strong reasoning abilities by interpreting the user's query, making logical connections, and applying your understanding of the world to generate comprehensive answers. 
+
+Key objectives:
+1. Analyze the prompt thoroughly and identify the core questions or issues being raised.
+2. Use your internal knowledge to reason through the problem, connecting relevant facts, concepts, and logical inferences.
+3. Provide well-explained answers that reflect a deep understanding of the subject, ensuring clarity and precision.
+4. Address ambiguities in the prompt by offering logical interpretations or asking for clarifications when needed."""},
                 {"role": "user", "content": question},
             ]
         )
@@ -174,15 +167,13 @@ def get_openai_response(question: str, model: str) -> str:
 
 
 
-def invoke_openai_api(question: str, file_path: Optional[str] = None) -> str:
-    ...
+def invoke_openai_api(question: str, file_path: Optional[str] = None, model: str ="gpt-4o-mini-2024-07-18") -> str:
+    if file_path is not None:
+        return get_openai_response_with_attachments(question=question, file_path=file_path, model=model)
+    else:
+        return get_openai_response(question=question, model=model)
+
 
 # Example usage:
 if __name__ == "__main__":
-    question = "Analyze this financial report."
-    file_path = "financial_report1.pdf"  # Replace with the actual path to your file
-
-    assistant_id, thread_id = create_prompt(question, file_path)
-    response = get_response(assistant_id, thread_id)
-    print("\nFinal Response:")
-    print(response)
+    ...

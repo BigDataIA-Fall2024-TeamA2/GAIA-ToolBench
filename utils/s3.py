@@ -32,17 +32,17 @@ def get_s3_client():
 
 
 def load_file(key: str):
-    local_path = LOCAL_CACHE_DIRECTORY + os.path.basename(key)
+    local_path = os.path.join(LOCAL_CACHE_DIRECTORY, os.path.basename(key))
     if not os.path.exists(local_path):
         download(key)
-    return open(local_path, "r")
+    return open(local_path, "rb")
 
 
 def download(key: str):
     s3_client = get_s3_client()
     try:
         s3_client.download_file(
-            load_s3_bucket(), key, LOCAL_CACHE_DIRECTORY + os.path.basename(key)
+            load_s3_bucket(), key, os.path.join(LOCAL_CACHE_DIRECTORY, os.path.basename(key)),
         )
     except ClientError as e:
         print(e)
