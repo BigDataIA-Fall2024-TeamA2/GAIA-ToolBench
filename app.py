@@ -23,7 +23,7 @@ def main():
         st.session_state.annotator_steps = ""
 
     st.sidebar.title("Navigation")
-    page = st.sidebar.selectbox("Go to", ["Home", "Test Case & Annotator Modification", "Feedback", "Reports & Visualization"])
+    page = st.sidebar.selectbox("Go to", ["Home", "Test Case & Annotator Modification", "Reports & Visualization"])
     
     # Set the page in session state
     st.session_state.page = page
@@ -112,14 +112,14 @@ def main():
                 # Placeholder for actual re-evaluation logic
                 st.session_state.deny_answer = False  # Reset the state after re-evaluation
 
-    # Feedback page
-    elif st.session_state.page == "Feedback":
-        st.title("User Feedback")
+    # # Feedback page
+    # elif st.session_state.page == "Feedback":
+    #     st.title("User Feedback")
         
-        feedback = st.text_area("Enter your feedback")
-        if st.button("Submit Feedback"):
-            # Store the feedback (you can use a database or file storage)
-            st.success("Feedback submitted successfully!")
+    #     feedback = st.text_area("Enter your feedback")
+    #     if st.button("Submit Feedback"):
+    #         # Store the feedback (you can use a database or file storage)
+    #         st.success("Feedback submitted successfully!")
     
     # Reports & Visualization page
     elif st.session_state.page == "Reports & Visualization":
@@ -162,9 +162,27 @@ def main():
             ax2.axis('equal')  # Equal aspect ratio ensures the pie is drawn as a circle
             st.pyplot(fig2)
 
-           
-         
+            # Histogram for model performance distribution
+            st.subheader("Histogram: Model Performance")
+            fig3, ax3 = plt.subplots()
+            df['Model'].value_counts().plot(kind='hist', bins=10, ax=ax3, color='skyblue')
+            ax3.set_title('Distribution of Models in the Benchmark')
+            ax3.set_xlabel('Model Count')
+            ax3.set_ylabel('Frequency')
+            st.pyplot(fig3)
+
+            # Bar chart showing performance per model
+            st.subheader("Model-wise Status Distribution")
+            fig4, ax4 = plt.subplots()
+            model_status = df.groupby('Model')['Status'].value_counts().unstack().fillna(0)
+            model_status.plot(kind='bar', stacked=True, ax=ax4)
+            ax4.set_title('Model-wise Performance')
+            ax4.set_xlabel('Models')
+            ax4.set_ylabel('Count of Status (Correct/Incorrect)')
+            st.pyplot(fig4)
 
 # Run the Streamlit app
 if __name__ == "__main__":
     main()
+
+           

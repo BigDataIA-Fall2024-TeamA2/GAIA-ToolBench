@@ -26,6 +26,8 @@ psycopg2 = "^2.9.9"
 
 streamlit = "^1.38.0"
 matplotlib = "^3.9.2"
+streamlit-extras = "^0.4.7"
+streamlit-option-menu = "^0.3.13"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
