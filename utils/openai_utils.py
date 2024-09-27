@@ -11,7 +11,7 @@ from openai.types.beta import Thread
 from pandas.io.formats.style_render import refactor_levels
 from urllib3 import request
 
-from utils.file_system_utils import load_file, OPENAI_SUPPORTED_FILE_FORMATS, encode_image
+from utils.file_system_utils import load_file, OPENAI_SUPPORTED_FILE_FORMATS, encode_image, LOCAL_CACHE_DIRECTORY
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,9 @@ def get_vector_store_id() -> Optional[str]:
     if "OPENAI_VECTOR_STORE_ID" in os.environ and os.environ["OPENAI_VECTOR_STORE_ID"]:
         return os.environ["OPENAI_VECTOR_STORE_ID"]
     raise ValueError("OpenAI Vector Store ID not found in environment variables")
+
+def _initial_setup():
+    os.makedirs(LOCAL_CACHE_DIRECTORY, exist_ok=True)
 
 
 def wait_on_run(openai_client: OpenAI, run, thread):
@@ -142,7 +145,7 @@ def _invoke_other_assistants(model: str, question: str, updated_file_path: str, 
     openai_client = get_openai_client()
     assistant_id = get_assistant_id()
     vector_store_id = get_vector_store_id()
-    
+
     assistant = openai_client.beta.assistants.retrieve(assistant_id=assistant_id)
     if vector_store_id not in assistant.tool_resources.file_search.vector_store_ids:
         assistant = openai_client.beta.assistants.update(
@@ -272,6 +275,8 @@ def invoke_openai_api(
     file_path: Optional[str] = None,
     model: str = "gpt-4o-2024-05-13",
 ) -> str:
+    # Create directories if not present
+    _initial_setup()
     if file_path is not None:
         return get_openai_response_with_attachments(
             question=question, file_path=file_path, model=model

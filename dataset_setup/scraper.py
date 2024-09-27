@@ -28,7 +28,6 @@ def download_datasets() -> bool:
     """
     Downloads a dataset from Hugging Face.
     """
-    # TODO: Add error handling
     dataset_configurations = datasets.get_dataset_config_names(
         path=HUGGING_FACE_DATASET_URI, token=load_token()
     )
