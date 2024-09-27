@@ -36,13 +36,15 @@ COPY models /app/models
 
 COPY utils /app/utils
 
+COPY pages /app/pages
+
 COPY app.py /app/app.py
 
 COPY manage.py /app/manage.py
 
-COPY requirements.txt /app/requirements.txt
+COPY requirements-docker.txt /app/requirements.txt
 
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/requirements-docker.txt
 
 EXPOSE 8080
 
