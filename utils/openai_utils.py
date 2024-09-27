@@ -62,28 +62,17 @@ def wait_on_run(openai_client: OpenAI, run, thread):
 
     return run
 
+def _invoke_audio_assistants():
+    ...
 
-def upload_file_to_vectorstore(
-    openai_client: OpenAI, vector_store_id: str, file_path: str
-) -> str:
-    """
-    Upload the file to the vector store and return the id of the uploaded file.
-    :param openai_client:
-    :param vector_store_id:
-    :param file_path:
-    :return:
-    """
-    try:
-        response = openai_client.beta.vector_stores.files.retrieve(
-            file_id=file_path, vector_store_id=vector_store_id
-        )
-    except openai.NotFoundError as nfe:
-        file_obj = load_file(file_path)
-        message_file = openai_client.files.create(file=file_obj, purpose="assistants")
 
-        resp = openai_client.beta.vector_stores.files.upload(
-            vector_store_id=vector_store_id, file=file_obj
-        )
+def _invoke_image_assistants():
+    ...
+
+
+def _invoke_other_assistants():
+    ...
+
 
 
 def get_openai_response_with_attachments(question: str, model: str, file_path=None):
@@ -103,6 +92,17 @@ def get_openai_response_with_attachments(question: str, model: str, file_path=No
     assistant_id = get_assistant_id()
     vector_store_id = get_vector_store_id()
 
+    file_buffer, relevant_file_name = load_file(file_path)
+    file_extension = os.path.splitext(relevant_file_name)[1]
+    match file_extension:
+        case ".mp3" | ".mp4" | ".mpeg" | ".mpga" | ".m4a" | ".wav" | "webm":
+            return _invoke_audio_assistants()
+        case ".png" | ".jpeg" | ".jpg" | ".webp" | ".gif":
+            return _invoke_image_assistants()
+        case _:
+            return _invoke_other_assistants()
+
+
     assistant = openai_client.beta.assistants.retrieve(assistant_id=assistant_id)
     if vector_store_id not in assistant.tool_resources.file_search.vector_store_ids:
         assistant = openai_client.beta.assistants.update(
@@ -116,7 +116,7 @@ def get_openai_response_with_attachments(question: str, model: str, file_path=No
         logger.info(f"Assistant {assistant_id} updated with vector store id")
 
     # Download the file from S3, verify the file extension is usable with OpenAI, and upload to OpenAI
-    file_buffer, relevant_file_name = load_file(file_path)
+
     if os.path.splitext(relevant_file_name)[1] not in OPENAI_SUPPORTED_FILE_FORMATS:
         logger.error(
             f"File format {os.path.splitext(relevant_file_name)} is not supported by OpenAI"
