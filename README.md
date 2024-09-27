@@ -3,7 +3,7 @@
 ## Introduction
 - This project develops a tool using Streamlit to help the Model Evaluation Team select and validate test cases from the GAIA dataset and evaluate the OpenAI model against them. Users can interactively assess the model's performance and provide feedback.
 - Link to working application, deployed on streamlit cloud: https://damg7245-a2-assign1.streamlit.app/
-- Link to the Video:
+- Link to the Video: [ScreencastRecording](video/streamlit-app-2024-09-27-15-09-08.mp4)
 - Link to the codelab documentation: https://codelabs-preview.appspot.com/?file_id=1lcpMMFA4Ow_vjpujuo2os8GiATqQlcYVz_xSgF04Hpo#0
   
 ## Setup
