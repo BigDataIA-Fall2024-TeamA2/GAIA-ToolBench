@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 
@@ -94,7 +95,6 @@ def download(key: str):
     filename = os.path.basename(key)
     try:
         _ = s3_client.head_object(Bucket=load_s3_bucket(), Key=filename)
-        # TODO: DEBUG the path error here
         s3_client.download_file(
             load_s3_bucket(),
             filename,
@@ -109,3 +109,8 @@ def download(key: str):
         else:
             logger.error("")
             return False
+
+
+def encode_image(image_path: str) -> str:
+    with open(image_path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")

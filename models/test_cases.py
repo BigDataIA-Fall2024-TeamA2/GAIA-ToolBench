@@ -37,7 +37,7 @@ def fetch_all_tests():
             TestCases.file_path,
             TestCases.answer,
             TestCases.metadata_steps,
-        ).all()
+        ).order_by(TestCases.index).all()
 
 
 def fetch_test_by_id(task_id: str):
