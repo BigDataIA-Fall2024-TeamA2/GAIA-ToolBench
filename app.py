@@ -137,7 +137,7 @@ def main():
                         task_id=context,
                         status="Failed",
                     )
-                    # st.success("Answer denied and stored successfully!")
+                    st.success("Answer denied and stored successfully!")
                 except Exception as e:
                     st.error(f"Error storing the denied answer: {e}")
 
