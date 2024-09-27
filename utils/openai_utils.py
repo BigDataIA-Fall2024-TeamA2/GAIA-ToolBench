@@ -205,7 +205,7 @@ def get_openai_response(question: str, model: str) -> str:
 def invoke_openai_api(
     question: str,
     file_path: Optional[str] = None,
-    model: str = "gpt-4o-mini-2024-07-18",
+    model: str = "gpt-4o-2024-05-13",
 ) -> str:
     if file_path is not None:
         return get_openai_response_with_attachments(

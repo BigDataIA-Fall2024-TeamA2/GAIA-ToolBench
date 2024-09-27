@@ -13,7 +13,6 @@ from utils.openai_utils import invoke_openai_api
 # Load environment variables from .env file
 load_dotenv()
 
-
 # Function to handle navigation between pages
 def main():
     # Initialize session state for page navigation and annotator steps
@@ -61,17 +60,11 @@ def main():
         # Display selected case metadata
         selected_metadata = metadata[int(selected_case.split()[-1]) - 1]
 
-        context = (
-            selected_metadata.task_id
-        )  # Assuming 'task_id' is what you want to display
+        context = selected_metadata.task_id  # Assuming 'task_id' is what you want to display
         st.subheader("Selected Case Information")
         st.write(f"**Context**: {context}")
-        question = st.text_area(
-            "Question", value=selected_metadata.question, height=100
-        )
-        expected_answer = (
-            selected_metadata.answer
-        )  # Assuming 'answer' is the expected answer
+        question = st.text_area("Question", value=selected_metadata.question, height=100)
+        expected_answer = selected_metadata.answer  # Assuming 'answer' is the expected answer
         file_path = selected_metadata.file_path
         annotator_steps = selected_metadata.metadata_steps
         model_answer = ""
@@ -79,17 +72,24 @@ def main():
         # Show the current annotator steps in the session state
         st.session_state.annotator_steps = annotator_steps
 
+        # Selectbox for model selection
+        model_options = ["gpt-4o-2024-05-13", "gpt-4o-mini-2024-07-18"]
+        selected_model = st.selectbox("Select a Model", model_options)
+
         # Get answer from OpenAI model
         if st.button("Get OpenAI Answer"):
             try:
                 # Send context and question to the OpenAI API
-                # TODO: Add option for selecting different models
-                model_answer = invoke_openai_api(question=question, file_path=file_path)
+                model_answer = invoke_openai_api(
+                    question=question,
+                    file_path=file_path,
+                    model=selected_model  # Pass selected model
+                )
                 # Display the model's answer
                 st.write(f"**Model Answer**: {model_answer}")
 
                 # Compare with expected answer
-                if model_answer.strip().lower() == expected_answer.strip().lower():
+                if expected_answer.strip().lower() in model_answer.strip().lower():
                     st.success("The model's answer matches the expected answer!")
                 else:
                     st.error("The model's answer is incorrect.")
@@ -104,16 +104,19 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Accept Answer"):
-                # Here you could implement logic to save the acceptance
-                st.success("Answer accepted!")
-                create_benchmark_result(
-                    llm_answer=model_answer,
-                    is_cot=False,
-                    model_name="",  # TODO: Add more model choices
-                    prompted_question=question,
-                    task_id=context,
-                    status="Accepted",
-                )
+                # Save the accepted answer in the benchmark_results table
+                try:
+                    create_benchmark_result(
+                        llm_answer=model_answer,
+                        is_cot=False,
+                        model_name=selected_model,  # Use the selected model
+                        prompted_question=question,
+                        task_id=context,
+                        status="Accepted",
+                    )
+                    st.success("Answer accepted and stored successfully!")  # Confirmation message
+                except Exception as e:
+                    st.error(f"Error storing the accepted answer: {e}")
 
         with col2:
             if st.button("Deny Answer"):
@@ -122,7 +125,7 @@ def main():
                 create_benchmark_result(
                     llm_answer=model_answer,
                     is_cot=False,
-                    model_name="",  # TODO: Add more model choices
+                    model_name=selected_model,  # Use the selected model
                     prompted_question=question,
                     task_id=context,
                     status="Failed",
@@ -131,26 +134,36 @@ def main():
         # Annotator Steps Modification (conditional display)
         if st.session_state.get("deny_answer", False):
             st.subheader("Modify Annotator Steps")
-            modified_steps = st.text_area(
-                "Annotator Steps", value=st.session_state.annotator_steps
-            )
+            modified_steps = st.text_area("Annotator Steps", value=st.session_state.annotator_steps)
 
             # Option to re-evaluate the model
             if st.button("Re-evaluate with Modified Steps"):
                 st.write("Re-evaluating with modified steps...")
-                # Placeholder for actual re-evaluation logic
-                st.session_state.deny_answer = (
-                    False  # Reset the state after re-evaluation
-                )
 
-    # # Feedback page
-    # elif st.session_state.page == "Feedback":
-    #     st.title("User Feedback")
+                # Create the combined question with metadata steps
+                combined_question = f"{question}\n\n{modified_steps}"
+                
+                try:
+                    # Send combined question with modified steps to the OpenAI API
+                    model_answer = invoke_openai_api(
+                        question=combined_question,  # Use combined question
+                        file_path=file_path,
+                        model=selected_model  # Use the selected model
+                    )
+                    # Display the model's new answer
+                    st.write(f"**Model Answer After Re-evaluation**: {model_answer}")
 
-    #     feedback = st.text_area("Enter your feedback")
-    #     if st.button("Submit Feedback"):
-    #         # Store the feedback (you can use a database or file storage)
-    #         st.success("Feedback submitted successfully!")
+                    # Compare with expected answer
+                    if expected_answer.strip().lower() in model_answer.strip().lower():
+                        st.success("The model's answer matches the expected answer!")
+                    else:
+                        st.error("The model's answer is incorrect.")
+
+                    # Reset the state after re-evaluation
+                    st.session_state.deny_answer = False  
+
+                except Exception as e:
+                    st.error(f"Error fetching the OpenAI answer: {e}")
 
     # Reports & Visualization page
     elif st.session_state.page == "Reports & Visualization":
@@ -167,7 +180,8 @@ def main():
                 {
                     "Test Case": result.task_id,
                     "Model": result.model_name,
-                    "LLM Answer": result.llm_answer,
+                    # "LLM Answer": result.llm_answer,
+                    "Question": result.prompted_question,
                     "Status": result.status,
                     "Timestamp": result.created_at,
                 }
@@ -204,9 +218,7 @@ def main():
             # Histogram for model performance distribution
             st.subheader("Histogram: Model Performance")
             fig3, ax3 = plt.subplots()
-            df["Model"].value_counts().plot(
-                kind="hist", bins=10, ax=ax3, color="skyblue"
-            )
+            df["Model"].value_counts().plot(kind="hist", bins=10, ax=ax3, color="skyblue")
             ax3.set_title("Distribution of Models in the Benchmark")
             ax3.set_xlabel("Model Count")
             ax3.set_ylabel("Frequency")
@@ -215,9 +227,7 @@ def main():
             # Bar chart showing performance per model
             st.subheader("Model-wise Status Distribution")
             fig4, ax4 = plt.subplots()
-            model_status = (
-                df.groupby("Model")["Status"].value_counts().unstack().fillna(0)
-            )
+            model_status = df.groupby("Model")["Status"].value_counts().unstack().fillna(0)
             model_status.plot(kind="bar", stacked=True, ax=ax4)
             ax4.set_title("Model-wise Performance")
             ax4.set_xlabel("Models")
