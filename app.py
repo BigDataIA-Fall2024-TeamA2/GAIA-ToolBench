@@ -2,13 +2,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-
 from models.benchmark_results import (
     fetch_benchmark_results,
     create_benchmark_result,
-)  # Import the function to fetch benchmark results
-from models.test_cases import fetch_all_tests  # Import functions from test_cases
+)
+from models.test_cases import fetch_all_tests
 from utils.openai_utils import invoke_openai_api
+import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,6 +22,13 @@ def main():
         st.session_state.deny_answer = False
     if "annotator_steps" not in st.session_state:
         st.session_state.annotator_steps = ""
+    if "model_answer" not in st.session_state:
+        st.session_state.model_answer = ""
+    # New session state variables for re-evaluation
+    if "re_evaluated_answer" not in st.session_state:
+        st.session_state.re_evaluated_answer = None
+    if "re_evaluated_status" not in st.session_state:
+        st.session_state.re_evaluated_status = None
 
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
@@ -67,7 +74,6 @@ def main():
         expected_answer = selected_metadata.answer  # Assuming 'answer' is the expected answer
         file_path = selected_metadata.file_path
         annotator_steps = selected_metadata.metadata_steps
-        model_answer = ""
 
         # Show the current annotator steps in the session state
         st.session_state.annotator_steps = annotator_steps
@@ -80,16 +86,16 @@ def main():
         if st.button("Get OpenAI Answer"):
             try:
                 # Send context and question to the OpenAI API
-                model_answer = invoke_openai_api(
+                st.session_state.model_answer = invoke_openai_api(
                     question=question,
                     file_path=file_path,
                     model=selected_model  # Pass selected model
                 )
                 # Display the model's answer
-                st.write(f"**Model Answer**: {model_answer}")
+                st.write(f"**Model Answer**: {st.session_state.model_answer}")
 
                 # Compare with expected answer
-                if expected_answer.strip().lower() in model_answer.strip().lower():
+                if expected_answer.strip().lower() in st.session_state.model_answer.strip().lower():
                     st.success("The model's answer matches the expected answer!")
                 else:
                     st.error("The model's answer is incorrect.")
@@ -107,12 +113,12 @@ def main():
                 # Save the accepted answer in the benchmark_results table
                 try:
                     create_benchmark_result(
-                        llm_answer=model_answer,
+                        llm_answer=st.session_state.model_answer,
                         is_cot=False,
                         model_name=selected_model,  # Use the selected model
                         prompted_question=question,
                         task_id=context,
-                        status="Accepted",
+                        status="Accepted" if expected_answer.strip().lower() in st.session_state.model_answer.strip().lower() else "Failed",
                     )
                     st.success("Answer accepted and stored successfully!")  # Confirmation message
                 except Exception as e:
@@ -122,14 +128,18 @@ def main():
             if st.button("Deny Answer"):
                 # Set session state to indicate that the answer was denied
                 st.session_state.deny_answer = True
-                create_benchmark_result(
-                    llm_answer=model_answer,
-                    is_cot=False,
-                    model_name=selected_model,  # Use the selected model
-                    prompted_question=question,
-                    task_id=context,
-                    status="Failed",
-                )
+                try:
+                    create_benchmark_result(
+                        llm_answer=st.session_state.model_answer,
+                        is_cot=False,
+                        model_name=selected_model,  # Use the selected model
+                        prompted_question=question,
+                        task_id=context,
+                        status="Failed",
+                    )
+                    # st.success("Answer denied and stored successfully!")
+                except Exception as e:
+                    st.error(f"Error storing the denied answer: {e}")
 
         # Annotator Steps Modification (conditional display)
         if st.session_state.get("deny_answer", False):
@@ -145,25 +155,65 @@ def main():
                 
                 try:
                     # Send combined question with modified steps to the OpenAI API
-                    model_answer = invoke_openai_api(
-                        question=combined_question,  # Use combined question
+                    st.session_state.re_evaluated_answer = invoke_openai_api(
+                        question=combined_question,
                         file_path=file_path,
-                        model=selected_model  # Use the selected model
+                        model=selected_model
                     )
                     # Display the model's new answer
-                    st.write(f"**Model Answer After Re-evaluation**: {model_answer}")
+                    st.write(f"**Model Answer After Re-evaluation**: {st.session_state.re_evaluated_answer}")
 
                     # Compare with expected answer
-                    if expected_answer.strip().lower() in model_answer.strip().lower():
+                    if expected_answer.strip().lower() in st.session_state.re_evaluated_answer.strip().lower():
                         st.success("The model's answer matches the expected answer!")
+                        st.session_state.re_evaluated_status = "Accepted"
                     else:
                         st.error("The model's answer is incorrect.")
-
-                    # Reset the state after re-evaluation
-                    st.session_state.deny_answer = False  
+                        st.session_state.re_evaluated_status = "Failed"
 
                 except Exception as e:
                     st.error(f"Error fetching the OpenAI answer: {e}")
+                    st.session_state.re_evaluated_answer = None
+                    st.session_state.re_evaluated_status = None
+
+            # Display accept/deny buttons only if re-evaluation has been performed
+            if st.session_state.re_evaluated_answer is not None:
+                col3, col4 = st.columns(2)
+                with col3:
+                    if st.button("Accept Re-evaluated Answer"):
+                        try:
+                            create_benchmark_result(
+                                llm_answer=st.session_state.re_evaluated_answer,
+                                is_cot=False,
+                                model_name=selected_model,
+                                prompted_question=question,
+                                task_id=context,
+                                status=st.session_state.re_evaluated_status,
+                            )
+                            st.success("Re-evaluated answer accepted and stored successfully!")
+                            # Reset the re-evaluation state
+                            st.session_state.re_evaluated_answer = None
+                            st.session_state.re_evaluated_status = None
+                        except Exception as e:
+                            st.error(f"Error storing the accepted answer: {e}")
+
+                with col4:
+                    if st.button("Deny Re-evaluated Answer"):
+                        try:
+                            create_benchmark_result(
+                                llm_answer=st.session_state.re_evaluated_answer,
+                                is_cot=False,
+                                model_name=selected_model,
+                                prompted_question=question,
+                                task_id=context,
+                                status="Failed",
+                            )
+                            st.success("Re-evaluated answer denied and stored.")
+                            # Reset the re-evaluation state
+                            st.session_state.re_evaluated_answer = None
+                            st.session_state.re_evaluated_status = None
+                        except Exception as e:
+                            st.error(f"Error storing the denied answer: {e}")
 
     # Reports & Visualization page
     elif st.session_state.page == "Reports & Visualization":
@@ -180,7 +230,7 @@ def main():
                 {
                     "Test Case": result.task_id,
                     "Model": result.model_name,
-                    # "LLM Answer": result.llm_answer,
+                    "LLM Answer": result.llm_answer,
                     "Question": result.prompted_question,
                     "Status": result.status,
                     "Timestamp": result.created_at,
@@ -194,14 +244,13 @@ def main():
             st.dataframe(df)
 
             # Generate a simple bar plot for Status (e.g., Correct vs Incorrect)
-            status_counts = df["Status"].value_counts()
-
-            fig, ax = plt.subplots()
-            status_counts.plot(kind="bar", ax=ax)
-            ax.set_title("Benchmark Status Distribution")
-            ax.set_xlabel("Status")
-            ax.set_ylabel("Count")
-            st.pyplot(fig)
+            status_counts = df['Status'].value_counts()
+            plt.figure(figsize=(10, 5))
+            plt.bar(status_counts.index, status_counts.values)
+            plt.title("Benchmark Results Summary")
+            plt.xlabel("Status")
+            plt.ylabel("Count")
+            st.pyplot(plt)
 
             # Pie chart of Status
             st.subheader("Pie Chart: Status Distribution")
@@ -218,7 +267,9 @@ def main():
             # Histogram for model performance distribution
             st.subheader("Histogram: Model Performance")
             fig3, ax3 = plt.subplots()
-            df["Model"].value_counts().plot(kind="hist", bins=10, ax=ax3, color="skyblue")
+            df["Model"].value_counts().plot(
+                kind="hist", bins=10, ax=ax3, color="skyblue"
+            )
             ax3.set_title("Distribution of Models in the Benchmark")
             ax3.set_xlabel("Model Count")
             ax3.set_ylabel("Frequency")
@@ -227,14 +278,14 @@ def main():
             # Bar chart showing performance per model
             st.subheader("Model-wise Status Distribution")
             fig4, ax4 = plt.subplots()
-            model_status = df.groupby("Model")["Status"].value_counts().unstack().fillna(0)
+            model_status = (
+                df.groupby("Model")["Status"].value_counts().unstack().fillna(0)
+            )
             model_status.plot(kind="bar", stacked=True, ax=ax4)
             ax4.set_title("Model-wise Performance")
             ax4.set_xlabel("Models")
             ax4.set_ylabel("Count of Status (Correct/Incorrect)")
             st.pyplot(fig4)
 
-
-# Run the Streamlit app
 if __name__ == "__main__":
     main()
