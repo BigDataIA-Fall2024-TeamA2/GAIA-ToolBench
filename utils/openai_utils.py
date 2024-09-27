@@ -8,7 +8,7 @@ import openai
 from openai import OpenAI, OpenAIError
 from openai.types.beta import Thread
 
-from utils.file_system_utils import load_file, OPENAI_SUPPORTED_FILE_FORMATS
+from utils.file_system_utils import load_file, OPENAI_SUPPORTED_FILE_FORMATS, LOCAL_CACHE_DIRECTORY
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,9 @@ def get_vector_store_id() -> Optional[str]:
     if "OPENAI_VECTOR_STORE_ID" in os.environ and os.environ["OPENAI_VECTOR_STORE_ID"]:
         return os.environ["OPENAI_VECTOR_STORE_ID"]
     raise ValueError("OpenAI Vector Store ID not found in environment variables")
+
+def _initial_setup():
+    os.makedirs(LOCAL_CACHE_DIRECTORY, exist_ok=True)
 
 
 def wait_on_run(openai_client: OpenAI, run, thread):
@@ -207,6 +210,8 @@ def invoke_openai_api(
     file_path: Optional[str] = None,
     model: str = "gpt-4o-2024-05-13",
 ) -> str:
+    # Create directories if not present
+    _initial_setup()
     if file_path is not None:
         return get_openai_response_with_attachments(
             question=question, file_path=file_path, model=model
