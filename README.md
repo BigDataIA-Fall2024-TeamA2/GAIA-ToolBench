@@ -1,4 +1,4 @@
-# Assignment 1
+# GAIA-ToolBench
 
 ## Introduction
 - This project develops a tool using Streamlit to help the Model Evaluation Team select and validate test cases from the GAIA dataset and evaluate the OpenAI model against them. Users can interactively assess the model's performance and provide feedback.
